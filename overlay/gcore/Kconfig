@@ -1,0 +1,7 @@
+config GCORE
+	bool "gcore kernel memory engine"
+	default n
+	help
+	  Kernel-side read/write engine and exec event feed used by
+	  userspace payloads. Exposes /dev/gcore (0600) with an ioctl
+	  interface built on access_process_vm().

@@ -1,0 +1,49 @@
+name: gcore-kernel
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch kernel source
+        run: git clone --depth 1 -b rethinking https://github.com/xiaomi-surya-devs/kernel_xiaomi_surya.git k
+
+      - name: Apply gcore
+        run: |
+          mkdir -p k/drivers/gcore
+          cp overlay/gcore/Kconfig overlay/gcore/Makefile overlay/gcore/gcore.c overlay/gcore/gcore_io.h k/drivers/gcore/
+          python3 overlay/prepare.py k
+
+      - name: Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison flex libssl-dev device-tree-compiler
+          curl -L -o clang.tar.xz https://github.com/Impqxr/aosp_clang_ci/releases/download/13289611/clang-13289611-linux-x86.tar.xz
+          mkdir -p clang
+          tar -xf clang.tar.xz -C clang
+          if [ -d clang/clang-* ]; then mv clang/clang-*/* clang/; fi
+          rm -f clang.tar.xz
+
+      - name: Build Image.gz
+        run: |
+          export PATH="$PWD/clang/bin:$PATH"
+          make -C k O=out ARCH=arm64 surya_defconfig
+          make -C k -j"$(nproc)" O=out ARCH=arm64 \
+            CC=clang LD=ld.lld AS=llvm-as AR=llvm-ar NM=llvm-nm \
+            OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
+            CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
+            LLVM=1 LLVM_IAS=1 Image.gz
+
+      - name: Upload Image.gz
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcore-Image
+          path: k/out/arch/arm64/boot/Image.gz
+          if-no-files-found: error
